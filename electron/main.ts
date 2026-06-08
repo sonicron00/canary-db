@@ -18,9 +18,7 @@ let win: BrowserWindow | null
 
 function createWindow() {
   const iconPath = path.join(process.env.VITE_PUBLIC || '', 'icon.png')
-  if (process.platform === 'darwin') {
-    app.dock.setIcon(iconPath)
-  }
+
   win = new BrowserWindow({
     width: 1400,
     height: 900,
