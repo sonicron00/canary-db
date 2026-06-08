@@ -171,7 +171,7 @@ function ConnectionScreen({
   }
 
   return (
-    <section className="screen">
+    <section className="screen query-screen">
       <div className="panel">
         <h2>Open connection</h2>
 
@@ -323,6 +323,11 @@ function QueryScreen({
   const [isRunning, setIsRunning] = useState(false)
   const [filter, setFilter] = useState('')
 
+  const [expandedCell, setExpandedCell] = useState<{
+    column: string
+    value: unknown
+  } | null>(null)
+
   const filteredRows = useMemo(() => {
     if (!result) return []
 
@@ -402,7 +407,7 @@ function QueryScreen({
         </button>
       </div>
 
-      <div className="panel">
+      <div className="panel query-panel">
         <h2>Saved queries</h2>
 
         <label>
@@ -466,40 +471,116 @@ function QueryScreen({
         </div>
       )}
 
-      {result && (
-        <div className="panel">
-          <div className="results-header">
-            <h2>Results</h2>
+{result && (
+  <div className="panel results-panel">
+    <div className="results-header">
+      <h2>Results</h2>
 
-            <input
-              className="filter-input"
-              value={filter}
-              onChange={(event) => setFilter(event.target.value)}
-              placeholder="Filter results..."
-            />
-          </div>
+      <div className="results-actions">
+        <input
+          className="filter-input"
+          value={filter}
+          onChange={(event) => setFilter(event.target.value)}
+          placeholder="Filter results..."
+        />
 
-          <p className="muted">
-            Showing {filteredRows.length} of {result.rows.length} rows
-          </p>
+        <button
+          type="button"
+          className="secondary"
+          onClick={() =>
+            exportRowsToCsv(
+              `${connection.name.replaceAll(' ', '-').toLowerCase()}-results.csv`,
+              result.columns,
+              filteredRows
+            )
+          }
+          disabled={filteredRows.length === 0}
+        >
+          Export CSV
+        </button>
+      </div>
+    </div>
 
-          {result.rows.length === 0 ? (
-            <p>No rows returned.</p>
-          ) : (
-            <ResultsTable columns={result.columns} rows={filteredRows} />
-          )}
-        </div>
-      )}
+    <p className="muted">
+      Showing {filteredRows.length} of {result.rows.length} rows
+    </p>
+
+    {result.rows.length === 0 ? (
+      <p>No rows returned.</p>
+    ) : (
+      <>
+        <ResultsTable
+          columns={result.columns}
+          rows={filteredRows}
+          onOpenCell={(column, value) => setExpandedCell({ column, value })}
+        />
+
+        {expandedCell && (
+          <CellViewerModal
+            column={expandedCell.column}
+            value={expandedCell.value}
+            onClose={() => setExpandedCell(null)}
+          />
+        )}
+      </>
+    )}
+  </div>
+)}
     </section>
+  )
+}
+
+type CellViewerModalProps = {
+  column: string
+  value: unknown
+  onClose: () => void
+}
+
+function CellViewerModal({
+  column,
+  value,
+  onClose
+}: CellViewerModalProps): React.JSX.Element {
+  return (
+    <div
+      className="modal-backdrop"
+      onClick={onClose}
+      role="presentation"
+    >
+      <div
+        className="modal"
+        onClick={(event) => event.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Expanded value for ${column}`}
+      >
+        <div className="modal-header">
+          <h2>{column}</h2>
+
+          <button type="button" className="secondary" onClick={onClose}>
+            Close
+          </button>
+        </div>
+
+        <div className="modal-body">
+          <pre>{formatExpandedValue(value)}</pre>
+        </div>
+      </div>
+    </div>
   )
 }
 
 type ResultsTableProps = {
   columns: string[]
   rows: Record<string, unknown>[]
+  onOpenCell: (column: string, value: unknown) => void
 }
 
-function ResultsTable({ columns, rows }: ResultsTableProps): React.JSX.Element {
+function ResultsTable({
+  columns,
+  rows,
+  onOpenCell
+}: ResultsTableProps): React.JSX.Element {
   return (
     <div className="table-wrap">
       <table>
@@ -514,15 +595,117 @@ function ResultsTable({ columns, rows }: ResultsTableProps): React.JSX.Element {
         <tbody>
           {rows.map((row, index) => (
             <tr key={index}>
-              {columns.map((column) => (
-                <td key={column}>{formatValue(row[column])}</td>
-              ))}
+              {columns.map((column) => {
+                const value = row[column]
+                const displayValue = formatValue(value)
+                const expandable = isExpandableCell(value)
+
+                return (
+                  <td
+                    key={column}
+                    className={expandable ? 'clickable-cell' : undefined}
+                    title={expandable ? 'Click to expand' : displayValue}
+                    onClick={() => {
+                      if (expandable) {
+                        onOpenCell(column, value)
+                      }
+                    }}
+                  >
+                    {displayValue}
+                  </td>
+                )
+              })}
             </tr>
           ))}
         </tbody>
       </table>
     </div>
   )
+}
+
+function isExpandableCell(value: unknown): boolean {
+  if (value === null || value === undefined) return false
+
+  if (typeof value === 'object') return true
+
+  const text = String(value)
+
+  if (text.length > 120) return true
+
+  return looksLikeJson(text)
+}
+
+function looksLikeJson(value: string): boolean {
+  const trimmed = value.trim()
+
+  return (
+    (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+    (trimmed.startsWith('[') && trimmed.endsWith(']'))
+  )
+}
+
+function formatExpandedValue(value: unknown): string {
+  if (value === null) return 'NULL'
+  if (value === undefined) return ''
+
+  if (typeof value === 'object') {
+    return JSON.stringify(value, null, 2)
+  }
+
+  const text = String(value)
+
+  if (looksLikeJson(text)) {
+    try {
+      return JSON.stringify(JSON.parse(text), null, 2)
+    } catch {
+      return text
+    }
+  }
+
+  return text
+}
+
+function exportRowsToCsv(
+  filename: string,
+  columns: string[],
+  rows: Record<string, unknown>[]
+): void {
+  const header = columns.map(escapeCsvValue).join(',')
+
+  const body = rows
+    .map((row) =>
+      columns
+        .map((column) => escapeCsvValue(formatValue(row[column])))
+        .join(',')
+    )
+    .join('\n')
+
+  const csv = `${header}\n${body}`
+
+  const blob = new Blob([csv], {
+    type: 'text/csv;charset=utf-8;',
+  })
+
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+
+  link.href = url
+  link.download = filename
+  link.click()
+
+  URL.revokeObjectURL(url)
+}
+
+function escapeCsvValue(value: string): string {
+  const shouldQuote =
+    value.includes(',') ||
+    value.includes('"') ||
+    value.includes('\n') ||
+    value.includes('\r')
+
+  const escaped = value.replaceAll('"', '""')
+
+  return shouldQuote ? `"${escaped}"` : escaped
 }
 
 function formatValue(value: unknown): string {

@@ -9,10 +9,16 @@ export type DbQueryParams = {
   query: string;
 };
 
+export type DbColumn = {
+  name: string
+  columnType: number
+}
+
 export type DbQueryResult = {
-  columns: string[];
-  rows: Record<string, unknown>[];
-};
+  columns: string[]
+  columnMeta: DbColumn[]
+  rows: Record<string, unknown>[]
+}
 
 export async function runQuery(params: DbQueryParams): Promise<DbQueryResult> {
   const connection = await mysql.createConnection({
@@ -32,6 +38,10 @@ export async function runQuery(params: DbQueryParams): Promise<DbQueryResult> {
 
     return {
       columns: fields.map((field) => field.name),
+      columnMeta: fields.map((field) => ({
+        name: field.name,
+        columnType: field.columnType
+      })),
       rows: Array.isArray(rows) ? (rows as Record<string, unknown>[]) : [],
     };
   } finally {
