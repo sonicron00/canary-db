@@ -111,7 +111,7 @@ function AppHeader(): React.JSX.Element {
 
       <div>
         <h1>Canary DB</h1>
-        <p>Lightweight MySQL client</p>
+        <p>Lightweight but handy MySQL client</p>
       </div>
     </header>
   )
