@@ -20,7 +20,10 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
   }
 })
 
-// --------- Expose DB API to the Renderer process ---------
+
 contextBridge.exposeInMainWorld('dbApi', {
-  query: (params: unknown) => ipcRenderer.invoke('db:query', params)
-})
+  query: (params: unknown) => ipcRenderer.invoke('db:query', params),
+  listTables: (params: unknown) => ipcRenderer.invoke('db:listTables', params),
+  getTablePreview: (params: unknown) =>
+    ipcRenderer.invoke('db:getTablePreview', params),
+});

@@ -1,18 +1,20 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react'
 import './App.css';
 
-import type { QueryResult, SavedConnection, SavedQuery } from '../src/renderer/src/types';
+import type { LivePanel, QueryDraft, QueryResult, SavedConnection, SavedQuery } from '../src/renderer/src/types';
 import {
   loadConnections,
   loadQueries,
   saveConnections,
-  saveQueries
+  saveQueries,
 } from '../src/renderer/src/storage';
 
-type Screen = 'connections' | 'query'
+type Screen = 'home' | 'live'
 
 function App(): React.JSX.Element {
-  const [screen, setScreen] = useState<Screen>('connections')
+  const [screen, setScreen] = useState<Screen>('home')
+  const [livePanel, setLivePanel] = useState<LivePanel>('query')
+  const [queryDraft, setQueryDraft] = useState<QueryDraft | null>(null)
 
   const [connections, setConnections] = useState<SavedConnection[]>(() =>
     loadConnections()
@@ -27,9 +29,7 @@ function App(): React.JSX.Element {
     const exists = connections.some((item) => item.id === connection.id)
 
     const nextConnections = exists
-      ? connections.map((item) =>
-          item.id === connection.id ? connection : item
-        )
+      ? connections.map((item) => (item.id === connection.id ? connection : item))
       : [...connections, connection]
 
     setConnections(nextConnections)
@@ -49,7 +49,14 @@ function App(): React.JSX.Element {
 
   function handleChooseConnection(connection: SavedConnection): void {
     setActiveConnection(connection)
-    setScreen('query')
+    setLivePanel('query')
+    setScreen('live')
+  }
+
+  function handleReturnHome(): void {
+    setActiveConnection(null)
+    setQueryDraft(null)
+    setScreen('home')
   }
 
   function handleSaveQuery(query: SavedQuery): void {
@@ -65,26 +72,32 @@ function App(): React.JSX.Element {
 
   return (
     <main className="app">
-      <AppHeader />
+      {screen === 'home' && (
+        <>
+          <AppHeader />
 
-      {screen === 'connections' && (
-        <ConnectionScreen
-          connections={connections}
-          onSaveConnection={handleSaveConnection}
-          onDeleteConnection={handleDeleteConnection}
-          onChooseConnection={handleChooseConnection}
-        />
+          <ConnectionScreen
+            connections={connections}
+            onSaveConnection={handleSaveConnection}
+            onDeleteConnection={handleDeleteConnection}
+            onChooseConnection={handleChooseConnection}
+          />
+        </>
       )}
 
-      {screen === 'query' && activeConnection && (
-        <QueryScreen
-          connection={activeConnection}
-          queries={queries.filter(
-            (query) => query.connectionId === activeConnection.id
-          )}
-          onBack={() => setScreen('connections')}
-          onSaveQuery={handleSaveQuery}
-        />
+      {screen === 'live' && activeConnection && (
+      <LiveConnectionScreen
+        connection={activeConnection}
+        livePanel={livePanel}
+        onSetLivePanel={setLivePanel}
+        onReturnHome={handleReturnHome}
+        queries={queries.filter(
+          (query) => query.connectionId === activeConnection.id
+        )}
+        onSaveQuery={handleSaveQuery}
+        queryDraft={queryDraft}
+        onSetQueryDraft={setQueryDraft}
+      />
       )}
     </main>
   )
@@ -93,11 +106,11 @@ function App(): React.JSX.Element {
 function AppHeader(): React.JSX.Element {
   return (
     <header className="app-header">
-      <img src="/image.png" className="app-logo" alt="Canary DB logo" />
+      <img src="/live-canary.png" className="app-logo" alt="Canary DB logo" />
 
       <div>
         <h1>Canary DB</h1>
-        <p>Fuss-free MySQL client for repeat connections and queries</p>
+        <p>Lightweight MySQL client</p>
       </div>
     </header>
   )
@@ -114,7 +127,7 @@ function ConnectionScreen({
   connections,
   onSaveConnection,
   onDeleteConnection,
-  onChooseConnection
+  onChooseConnection,
 }: ConnectionScreenProps): React.JSX.Element {
   const [selectedConnectionId, setSelectedConnectionId] = useState(
     connections[0]?.id ?? ''
@@ -124,6 +137,7 @@ function ConnectionScreen({
     (connection) => connection.id === selectedConnectionId
   )
 
+  const [editingConnectionId, setEditingConnectionId] = useState<string | null>(null)
   const [name, setName] = useState('')
   const [host, setHost] = useState('')
   const [port, setPort] = useState('3306')
@@ -134,6 +148,7 @@ function ConnectionScreen({
   function loadSelectedIntoForm(): void {
     if (!selectedConnection) return
 
+    setEditingConnectionId(selectedConnection.id)
     setName(selectedConnection.name)
     setHost(selectedConnection.host)
     setPort(selectedConnection.port)
@@ -143,6 +158,7 @@ function ConnectionScreen({
   }
 
   function clearForm(): void {
+    setEditingConnectionId(null)
     setName('')
     setHost('')
     setPort('3306')
@@ -152,31 +168,28 @@ function ConnectionScreen({
   }
 
   function saveConnection(): void {
-    const id = selectedConnection?.id && name === selectedConnection.name
-      ? selectedConnection.id
-      : crypto.randomUUID()
-
     const connection: SavedConnection = {
-      id,
+      id: editingConnectionId ?? crypto.randomUUID(),
       name,
       host,
       port,
       user,
       password,
-      database
+      database,
     }
 
     onSaveConnection(connection)
     setSelectedConnectionId(connection.id)
+    setEditingConnectionId(connection.id)
   }
 
   return (
-    <section className="screen query-screen">
+    <section className="screen home-screen">
       <div className="panel">
         <h2>Open connection</h2>
 
         {connections.length === 0 ? (
-          <p>No saved connections yet.</p>
+          <p>No saved connections yet. Create one below.</p>
         ) : (
           <>
             <label>
@@ -228,7 +241,7 @@ function ConnectionScreen({
       </div>
 
       <div className="panel">
-        <h2>Create / edit connection</h2>
+        <h2>{editingConnectionId ? 'Edit connection' : 'Create connection'}</h2>
 
         <label>
           Name
@@ -301,19 +314,142 @@ function ConnectionScreen({
   )
 }
 
-type QueryScreenProps = {
+type LiveConnectionScreenProps = {
   connection: SavedConnection
+  livePanel: LivePanel
+  onSetLivePanel: (panel: LivePanel) => void
+  onReturnHome: () => void
   queries: SavedQuery[]
-  onBack: () => void
   onSaveQuery: (query: SavedQuery) => void
+  queryDraft: QueryDraft | null
+  onSetQueryDraft: (draft: QueryDraft | null) => void
 }
 
-function QueryScreen({
+function LiveConnectionScreen({
+  connection,
+  livePanel,
+  onSetLivePanel,
+  onReturnHome,
+  queries,
+  onSaveQuery,
+  queryDraft,
+  onSetQueryDraft,
+}: LiveConnectionScreenProps): React.JSX.Element {
+  const [latestExploreDraft, setLatestExploreDraft] = useState<QueryDraft | null>(null)
+  return (
+    <section className="screen live-screen">
+    <LiveConnectionHeader
+      connection={connection}
+      livePanel={livePanel}
+      onSetLivePanel={(panel) => {
+        if (panel === 'query' && latestExploreDraft) {
+          onSetQueryDraft(latestExploreDraft)
+        }
+
+        onSetLivePanel(panel)
+      }}
+      onReturnHome={onReturnHome}
+    />
+
+    {livePanel === 'query' && (
+      <QueryPanel
+        connection={connection}
+        queries={queries}
+        onSaveQuery={onSaveQuery}
+        queryDraft={queryDraft}
+        onSetQueryDraft={onSetQueryDraft}
+      />
+    )}
+
+    {livePanel === 'explore' && (
+      <ExplorePanel
+        connection={connection}
+        onPreviewLoaded={setLatestExploreDraft}
+        onOpenInQuery={(draft) => {
+          setLatestExploreDraft(draft)
+          onSetQueryDraft(draft)
+          onSetLivePanel('query')
+        }}
+      />
+    )}
+    </section>
+  )
+}
+
+type LiveConnectionHeaderProps = {
+  connection: SavedConnection
+  livePanel: LivePanel
+  onSetLivePanel: (panel: LivePanel) => void
+  onReturnHome: () => void
+}
+
+function LiveConnectionHeader({
+  connection,
+  livePanel,
+  onSetLivePanel,
+  onReturnHome,
+}: LiveConnectionHeaderProps): React.JSX.Element {
+  return (
+    <header className="live-header">
+      <div className="live-header-left">
+        <img
+          src="/live-canary.png"
+          className="live-canary"
+          alt="Live Canary DB connection"
+        />
+
+        <div>
+          <p className="eyebrow">Live connection</p>
+          <h1>{connection.name}</h1>
+          <p className="muted">
+            {connection.user}@{connection.host}
+            {connection.database ? ` / ${connection.database}` : ''}
+          </p>
+        </div>
+      </div>
+
+      <div className="live-header-actions">
+        <div className="panel-toggle">
+          <button
+            type="button"
+            className={livePanel === 'query' ? 'active' : 'secondary'}
+            onClick={() => onSetLivePanel('query')}
+          >
+            Query
+          </button>
+
+          <button
+            type="button"
+            className={livePanel === 'explore' ? 'active' : 'secondary'}
+            onClick={() => onSetLivePanel('explore')}
+          >
+            Explore
+          </button>
+        </div>
+
+        <button type="button" className="secondary" onClick={onReturnHome}>
+          Home
+        </button>
+      </div>
+    </header>
+  )
+}
+
+type QueryPanelProps = {
+  connection: SavedConnection
+  queries: SavedQuery[]
+  onSaveQuery: (query: SavedQuery) => void
+  queryDraft: QueryDraft | null
+  onSetQueryDraft: (draft: QueryDraft | null) => void
+}
+
+function QueryPanel({
   connection,
   queries,
-  onBack,
-  onSaveQuery
-}: QueryScreenProps): React.JSX.Element {
+  onSaveQuery,
+  queryDraft,
+  onSetQueryDraft,
+}: QueryPanelProps): React.JSX.Element {
   const [selectedQueryId, setSelectedQueryId] = useState('')
   const [queryName, setQueryName] = useState('')
   const [querySql, setQuerySql] = useState('SELECT NOW();')
@@ -322,11 +458,21 @@ function QueryScreen({
   const [error, setError] = useState('')
   const [isRunning, setIsRunning] = useState(false)
   const [filter, setFilter] = useState('')
-
   const [expandedCell, setExpandedCell] = useState<{
     column: string
     value: unknown
   } | null>(null)
+
+  useEffect(() => {
+    if (!queryDraft) return
+
+    setSelectedQueryId('')
+    setQueryName(queryDraft.name)
+    setQuerySql(queryDraft.sql)
+    setResult(queryDraft.result ?? null)
+    setError('')
+    setFilter('')
+  }, [queryDraft])
 
   const filteredRows = useMemo(() => {
     if (!result) return []
@@ -337,7 +483,8 @@ function QueryScreen({
       return result.rows
     }
 
-    return result.rows.filter((row: any) =>
+    //@ts-ignore
+    return result.rows.filter((row) =>
       Object.values(row).some((value) =>
         formatValue(value).toLowerCase().includes(search)
       )
@@ -345,14 +492,21 @@ function QueryScreen({
   }, [result, filter])
 
   function loadSelectedQuery(queryId: string): void {
+    onSetQueryDraft(null)
     setSelectedQueryId(queryId)
 
     const selected = queries.find((query) => query.id === queryId)
 
-    if (!selected) return
+    if (!selected) {
+      setQueryName('')
+      setQuerySql('SELECT NOW();')
+      setResult(null)
+      return
+    }
 
     setQueryName(selected.name)
     setQuerySql(selected.sql)
+    setResult(null)
   }
 
   function saveCurrentQuery(): void {
@@ -362,10 +516,11 @@ function QueryScreen({
       id,
       connectionId: connection.id,
       name: queryName,
-      sql: querySql
+      sql: querySql,
     })
 
     setSelectedQueryId(id)
+    onSetQueryDraft(null)
   }
 
   async function runQuery(): Promise<void> {
@@ -380,7 +535,7 @@ function QueryScreen({
         user: connection.user,
         password: connection.password ?? '',
         database: connection.database,
-        query: querySql
+        query: querySql,
       })
 
       setResult(response)
@@ -392,26 +547,12 @@ function QueryScreen({
   }
 
   return (
-    <section className="screen">
-      <div className="query-header">
-        <div>
-          <h2>{connection.name}</h2>
-          <p>
-            {connection.user}@{connection.host}
-            {connection.database ? ` / ${connection.database}` : ''}
-          </p>
-        </div>
-
-        <button type="button" className="secondary" onClick={onBack}>
-          Change connection
-        </button>
-      </div>
-
+    <section className="query-panel-layout">
       <div className="panel query-panel">
-        <h2>Saved queries</h2>
+        <h2>Query</h2>
 
         <label>
-          Load query
+          Load saved query
           <select
             value={selectedQueryId}
             onChange={(event) => loadSelectedQuery(event.target.value)}
@@ -435,7 +576,7 @@ function QueryScreen({
           />
         </label>
 
-        <label>
+        <label className="sql-label">
           SQL
           <textarea
             value={querySql}
@@ -471,102 +612,275 @@ function QueryScreen({
         </div>
       )}
 
-{result && (
-  <div className="panel results-panel">
-    <div className="results-header">
-      <h2>Results</h2>
+      {result && (
+        <div className="panel results-panel">
+          <div className="results-header">
+            <h2>Results</h2>
 
-      <div className="results-actions">
-        <input
-          className="filter-input"
-          value={filter}
-          onChange={(event) => setFilter(event.target.value)}
-          placeholder="Filter results..."
-        />
+            <div className="results-actions">
+              <input
+                className="filter-input"
+                value={filter}
+                onChange={(event) => setFilter(event.target.value)}
+                placeholder="Filter results..."
+              />
 
-        <button
-          type="button"
-          className="secondary"
-          onClick={() =>
-            exportRowsToCsv(
-              `${connection.name.replaceAll(' ', '-').toLowerCase()}-results.csv`,
-              result.columns,
-              filteredRows
-            )
-          }
-          disabled={filteredRows.length === 0}
-        >
-          Export CSV
-        </button>
-      </div>
-    </div>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() =>
+                  exportRowsToCsv(
+                    //@ts-ignore
+                    `${connection.name.replaceAll(' ', '-').toLowerCase()}-results.csv`,
+                    result.columns,
+                    filteredRows
+                  )
+                }
+                disabled={filteredRows.length === 0}
+              >
+                Export CSV
+              </button>
+            </div>
+          </div>
 
-    <p className="muted">
-      Showing {filteredRows.length} of {result.rows.length} rows
-    </p>
+          <p className="muted">
+            Showing {filteredRows.length} of {result.rows.length} rows
+          </p>
 
-    {result.rows.length === 0 ? (
-      <p>No rows returned.</p>
-    ) : (
-      <>
-        <ResultsTable
-          columns={result.columns}
-          rows={filteredRows}
-          onOpenCell={(column, value) => setExpandedCell({ column, value })}
-        />
+          {result.rows.length === 0 ? (
+            <p>No rows returned.</p>
+          ) : (
+            <>
+              <ResultsTable
+                columns={result.columns}
+                rows={filteredRows}
+                onOpenCell={(column, value) => setExpandedCell({ column, value })}
+              />
 
-        {expandedCell && (
-          <CellViewerModal
-            column={expandedCell.column}
-            value={expandedCell.value}
-            onClose={() => setExpandedCell(null)}
-          />
-        )}
-      </>
-    )}
-  </div>
-)}
+              {expandedCell && (
+                <CellViewerModal
+                  column={expandedCell.column}
+                  value={expandedCell.value}
+                  onClose={() => setExpandedCell(null)}
+                />
+              )}
+            </>
+          )}
+        </div>
+      )}
     </section>
   )
 }
 
-type CellViewerModalProps = {
-  column: string
-  value: unknown
-  onClose: () => void
+type ExplorePanelProps = {
+  connection: SavedConnection
+  onPreviewLoaded: (draft: QueryDraft | null) => void
+  onOpenInQuery: (draft: QueryDraft) => void
 }
 
-function CellViewerModal({
-  column,
-  value,
-  onClose
-}: CellViewerModalProps): React.JSX.Element {
-  return (
-    <div
-      className="modal-backdrop"
-      onClick={onClose}
-      role="presentation"
-    >
-      <div
-        className="modal"
-        onClick={(event) => event.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-label={`Expanded value for ${column}`}
-      >
-        <div className="modal-header">
-          <h2>{column}</h2>
+function ExplorePanel({
+  connection,
+  onPreviewLoaded,
+  onOpenInQuery,
+}: ExplorePanelProps): React.JSX.Element {
+  const [tables, setTables] = useState<string[]>([])
+  const [selectedTable, setSelectedTable] = useState('')
+  const [preview, setPreview] = useState<QueryResult | null>(null)
+  const [error, setError] = useState('')
+  const [isLoadingTables, setIsLoadingTables] = useState(false)
+  const [isLoadingPreview, setIsLoadingPreview] = useState(false)
+  const [filter, setFilter] = useState('')
+  const [expandedCell, setExpandedCell] = useState<{
+    column: string
+    value: unknown
+  } | null>(null)
 
-          <button type="button" className="secondary" onClick={onClose}>
-            Close
+
+  function buildTablePreviewSql(tableName: string): string {
+        return `SELECT *
+    FROM \`${tableName.replaceAll('`', '``')}\`
+    ORDER BY id DESC
+    LIMIT 10;`
+  }
+
+  useEffect(() => {
+  loadTables()
+  }, [])
+
+  const filteredTables = useMemo(() => {
+    const search = filter.trim().toLowerCase()
+
+    if (!search) return tables
+
+    return tables.filter((table) => table.toLowerCase().includes(search))
+  }, [tables, filter])
+
+  async function loadTables(): Promise<void> {
+    setIsLoadingTables(true)
+    setError('')
+    setPreview(null)
+    setSelectedTable('')
+    onPreviewLoaded(null)
+
+    try {
+      const response = await window.dbApi.listTables({
+        host: connection.host,
+        port: Number(connection.port),
+        user: connection.user,
+        password: connection.password ?? '',
+        database: connection.database,
+      })
+
+      setTables(response)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setIsLoadingTables(false)
+    }
+  }
+
+  async function loadPreview(tableName: string): Promise<void> {
+    setSelectedTable(tableName)
+    setPreview(null)
+    setError('')
+    setIsLoadingPreview(true)
+
+    try {
+      const response = await window.dbApi.getTablePreview({
+        host: connection.host,
+        port: Number(connection.port),
+        user: connection.user,
+        password: connection.password ?? '',
+        database: connection.database,
+        tableName,
+      })
+
+      setPreview(response)
+
+      onPreviewLoaded({
+        name: `Explore ${tableName}`,
+        sql: buildTablePreviewSql(tableName),
+        result: response,
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setIsLoadingPreview(false)
+    }
+  }
+
+  return (
+    <section className="explore-layout">
+      <aside className="panel table-list-panel">
+        <div className="explore-panel-header">
+          <h2>Tables</h2>
+
+          <button type="button" className="secondary" onClick={loadTables}>
+            {isLoadingTables ? 'Loading...' : 'Refresh'}
           </button>
         </div>
 
-        <div className="modal-body">
-          <pre>{formatExpandedValue(value)}</pre>
-        </div>
-      </div>
+        <input
+          value={filter}
+          onChange={(event) => setFilter(event.target.value)}
+          placeholder="Filter tables..."
+        />
+
+    <div className="table-list">
+      {isLoadingTables && <p className="muted">Loading tables...</p>}
+
+      {!isLoadingTables && filteredTables.length === 0 && (
+        <p className="muted">No tables found.</p>
+      )}
+
+      {!isLoadingTables &&
+        filteredTables.map((table) => (
+          <button
+            key={table}
+            type="button"
+            className={selectedTable === table ? 'table-item active' : 'table-item'}
+            onClick={() => loadPreview(table)}
+          >
+            {table}
+          </button>
+        ))}
     </div>
+      </aside>
+
+          <section className="panel table-preview-panel">
+        <div className="results-header">
+          <div>
+            <h2>{selectedTable || 'Select a table'}</h2>
+            <p className="muted">
+              {selectedTable
+                ? 'Top 10 rows ordered by id DESC'
+                : isLoadingTables
+                  ? 'Loading tables...'
+                  : 'Choose a table from the left.'}
+            </p>
+          </div>
+
+          {preview && selectedTable && (
+            <div className="results-actions">
+              <button
+                type="button"
+                className="secondary"
+                onClick={() =>
+                  exportRowsToCsv(
+                    `${selectedTable}-top-10.csv`,
+                    preview.columns,
+                    preview.rows
+                  )
+                }
+              >
+                Export CSV
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  onOpenInQuery({
+                    name: `Explore ${selectedTable}`,
+                    sql: buildTablePreviewSql(selectedTable),
+                    result: preview,
+                  })
+                }
+              >
+                Open in Query
+              </button>
+            </div>
+          )}
+        </div>
+
+        {error && (
+          <div className="error-message">
+            <pre>{error}</pre>
+          </div>
+        )}
+
+        {isLoadingPreview && <p>Loading preview...</p>}
+
+        {preview && preview.rows.length === 0 && <p>No rows returned.</p>}
+
+        {preview && preview.rows.length > 0 && (
+          <>
+            <ResultsTable
+              columns={preview.columns}
+              rows={preview.rows}
+              onOpenCell={(column, value) => setExpandedCell({ column, value })}
+            />
+
+            {expandedCell && (
+              <CellViewerModal
+                column={expandedCell.column}
+                value={expandedCell.value}
+                onClose={() => setExpandedCell(null)}
+              />
+            )}
+          </>
+        )}
+      </section>
+    </section>
   )
 }
 
@@ -579,7 +893,7 @@ type ResultsTableProps = {
 function ResultsTable({
   columns,
   rows,
-  onOpenCell
+  onOpenCell,
 }: ResultsTableProps): React.JSX.Element {
   return (
     <div className="table-wrap">
@@ -623,9 +937,86 @@ function ResultsTable({
   )
 }
 
+type CellViewerModalProps = {
+  column: string
+  value: unknown
+  onClose: () => void
+}
+
+function CellViewerModal({
+  column,
+  value,
+  onClose,
+}: CellViewerModalProps): React.JSX.Element {
+  return (
+    <div className="modal-backdrop" onClick={onClose} role="presentation">
+      <div
+        className="modal"
+        onClick={(event) => event.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Expanded value for ${column}`}
+      >
+        <div className="modal-header">
+          <h2>{column}</h2>
+
+          <button type="button" className="secondary" onClick={onClose}>
+            Close
+          </button>
+        </div>
+
+        <div className="modal-body">
+          <pre>{formatExpandedValue(value)}</pre>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function exportRowsToCsv(
+  filename: string,
+  columns: string[],
+  rows: Record<string, unknown>[]
+): void {
+  const header = columns.map(escapeCsvValue).join(',')
+
+  const body = rows
+    .map((row) =>
+      columns.map((column) => escapeCsvValue(formatValue(row[column]))).join(',')
+    )
+    .join('\n')
+
+  const csv = `${header}\n${body}`
+
+  const blob = new Blob([csv], {
+    type: 'text/csv;charset=utf-8;',
+  })
+
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+
+  link.href = url
+  link.download = filename
+  link.click()
+
+  URL.revokeObjectURL(url)
+}
+
+function escapeCsvValue(value: string): string {
+  const shouldQuote =
+    value.includes(',') ||
+    value.includes('"') ||
+    value.includes('\n') ||
+    value.includes('\r')
+
+  //@ts-ignore
+  const escaped = value.replaceAll('"', '""')
+
+  return shouldQuote ? `"${escaped}"` : escaped
+}
+
 function isExpandableCell(value: unknown): boolean {
   if (value === null || value === undefined) return false
-
   if (typeof value === 'object') return true
 
   const text = String(value)
@@ -663,49 +1054,6 @@ function formatExpandedValue(value: unknown): string {
   }
 
   return text
-}
-
-function exportRowsToCsv(
-  filename: string,
-  columns: string[],
-  rows: Record<string, unknown>[]
-): void {
-  const header = columns.map(escapeCsvValue).join(',')
-
-  const body = rows
-    .map((row) =>
-      columns
-        .map((column) => escapeCsvValue(formatValue(row[column])))
-        .join(',')
-    )
-    .join('\n')
-
-  const csv = `${header}\n${body}`
-
-  const blob = new Blob([csv], {
-    type: 'text/csv;charset=utf-8;',
-  })
-
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-
-  link.href = url
-  link.download = filename
-  link.click()
-
-  URL.revokeObjectURL(url)
-}
-
-function escapeCsvValue(value: string): string {
-  const shouldQuote =
-    value.includes(',') ||
-    value.includes('"') ||
-    value.includes('\n') ||
-    value.includes('\r')
-
-  const escaped = value.replaceAll('"', '""')
-
-  return shouldQuote ? `"${escaped}"` : escaped
 }
 
 function formatValue(value: unknown): string {

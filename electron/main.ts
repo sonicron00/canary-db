@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain } from 'electron'
 import { fileURLToPath } from 'node:url'
-import { runQuery } from '../src/main/db'
+import { getTablePreview, listTables, runQuery } from '../src/main/db'
 import path from 'node:path'
 
 
@@ -67,6 +67,14 @@ app.on('activate', () => {
 
 ipcMain.handle('db:query', async (_event, params) => {
   return await runQuery(params)
-})
+});
+
+ipcMain.handle('db:listTables', async (_event, params) => {
+  return await listTables(params)
+});
+
+ipcMain.handle('db:getTablePreview', async (_event, params) => {
+  return await getTablePreview(params)
+});
 
 app.whenReady().then(createWindow)

@@ -5,7 +5,7 @@ export type SavedConnection = {
   port: string
   user: string
   database: string
-  password: string
+  password?: string
 }
 
 export type SavedQuery = {
@@ -19,3 +19,11 @@ export type QueryResult = {
   columns: string[]
   rows: Record<string, unknown>[]
 }
+
+export type QueryDraft = {
+  name: string
+  sql: string
+  result?: QueryResult
+}
+
+export type LivePanel = 'query' | 'explore'
