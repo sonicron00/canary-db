@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import liveCanaryLogo from './assets/live-canary.png'
 import './App.css';
 
 import type { LivePanel, QueryDraft, QueryResult, SavedConnection, SavedQuery, TableColumn } from '../src/renderer/src/types';
@@ -106,7 +107,7 @@ function App(): React.JSX.Element {
 function AppHeader(): React.JSX.Element {
   return (
     <header className="app-header">
-      <img src="/live-canary.png" className="app-logo" alt="Canary DB logo" />
+      <img src={liveCanaryLogo} className="app-logo" alt="Canary DB logo" />
 
       <div>
         <h1>Canary DB</h1>
@@ -393,7 +394,7 @@ function LiveConnectionHeader({
     <header className="live-header">
       <div className="live-header-left">
         <img
-          src="/live-canary.png"
+          src={liveCanaryLogo}
           className="live-canary"
           alt="Live Canary DB connection"
         />
