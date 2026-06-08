@@ -899,28 +899,6 @@ function ExplorePanel({
   )
 }
 
-type TableSchemaProps = {
-  columns: TableColumn[]
-}
-
-function TableSchema({ columns }: TableSchemaProps): React.JSX.Element {
-  return (
-    <div className="schema-strip">
-      {columns.map((column) => (
-        <div key={column.name} className="schema-pill">
-          <span className="schema-column-name">{column.name}</span>
-          <span className="schema-column-type">{column.columnType}</span>
-
-          <span className="schema-column-meta">
-            {column.columnKey && <span>{column.columnKey}</span>}
-            <span>{column.isNullable ? 'nullable' : 'not null'}</span>
-          </span>
-        </div>
-      ))}
-    </div>
-  )
-}
-
 type ResultsTableProps = {
   columns: string[]
   rows: Record<string, unknown>[]
