@@ -406,3 +406,56 @@ td.clickable-cell:hover {
   font-size: 13px;
   line-height: 1.5;
 }
+
+.schema-strip {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 8px 0 12px;
+  margin-bottom: 8px;
+}
+
+.schema-pill {
+  flex: 0 0 auto;
+  min-width: 150px;
+  background: #151515;
+  border: 1px solid #333;
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
+.schema-column-name {
+  display: block;
+  color: #f4f4f4;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.schema-column-type {
+  display: block;
+  color: #d6c755;
+  font-size: 12px;
+  margin-top: 3px;
+  font-family: 'SF Mono', Menlo, Monaco, Consolas, monospace;
+}
+
+.schema-column-meta {
+  display: flex;
+  gap: 6px;
+  color: #aaa;
+  font-size: 11px;
+  margin-top: 4px;
+}
+
+.column-name {
+  display: block;
+  font-weight: 700;
+}
+
+.column-type {
+  display: block;
+  color: #d6c755;
+  font-size: 11px;
+  margin-top: 3px;
+  font-family: 'SF Mono', Menlo, Monaco, Consolas, monospace;
+}

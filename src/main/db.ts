@@ -9,6 +9,14 @@ export type DbQueryParams = {
   query: string
 }
 
+export type TableColumn = {
+  name: string
+  dataType: string
+  columnType: string
+  isNullable: boolean
+  columnKey: string
+}
+
 export type DbQueryResult = {
   columns: string[]
   rows: Record<string, unknown>[]
@@ -71,7 +79,42 @@ export async function getTablePreview(
   })
 }
 
+export async function getTableColumns(
+  params: Omit<DbQueryParams, 'query'> & { tableName: string }
+): Promise<TableColumn[]> {
+  const result = await runQuery({
+    host: params.host,
+    port: params.port,
+    user: params.user,
+    password: params.password,
+    database: params.database,
+    query: `
+      SELECT
+        column_name AS name,
+        data_type AS dataType,
+        column_type AS columnType,
+        is_nullable AS isNullable,
+        column_key AS columnKey
+      FROM information_schema.columns
+      WHERE table_schema = DATABASE()
+        AND table_name = ${escapeSqlString(params.tableName)}
+      ORDER BY ordinal_position ASC
+    `,
+  })
+
+  return result.rows.map((row) => ({
+    name: String(row.name),
+    dataType: String(row.dataType),
+    columnType: String(row.columnType),
+    isNullable: String(row.isNullable).toUpperCase() === 'YES',
+    columnKey: String(row.columnKey ?? ''),
+  }))
+}
+
 function escapeIdentifier(identifier: string): string {
-  //@ts-ignore
   return `\`${identifier.replaceAll('`', '``')}\``
+}
+
+function escapeSqlString(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`
 }

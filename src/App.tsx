@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import './App.css';
 
-import type { LivePanel, QueryDraft, QueryResult, SavedConnection, SavedQuery } from '../src/renderer/src/types';
+import type { LivePanel, QueryDraft, QueryResult, SavedConnection, SavedQuery, TableColumn } from '../src/renderer/src/types';
 import {
   loadConnections,
   loadQueries,
@@ -483,7 +483,6 @@ function QueryPanel({
       return result.rows
     }
 
-    //@ts-ignore
     return result.rows.filter((row) =>
       Object.values(row).some((value) =>
         formatValue(value).toLowerCase().includes(search)
@@ -630,7 +629,6 @@ function QueryPanel({
                 className="secondary"
                 onClick={() =>
                   exportRowsToCsv(
-                    //@ts-ignore
                     `${connection.name.replaceAll(' ', '-').toLowerCase()}-results.csv`,
                     result.columns,
                     filteredRows
@@ -686,6 +684,7 @@ function ExplorePanel({
   const [tables, setTables] = useState<string[]>([])
   const [selectedTable, setSelectedTable] = useState('')
   const [preview, setPreview] = useState<QueryResult | null>(null)
+  const [tableColumns, setTableColumns] = useState<TableColumn[]>([])
   const [error, setError] = useState('')
   const [isLoadingTables, setIsLoadingTables] = useState(false)
   const [isLoadingPreview, setIsLoadingPreview] = useState(false)
@@ -719,6 +718,7 @@ function ExplorePanel({
     setIsLoadingTables(true)
     setError('')
     setPreview(null)
+    setTableColumns([])
     setSelectedTable('')
     onPreviewLoaded(null)
 
@@ -742,25 +742,37 @@ function ExplorePanel({
   async function loadPreview(tableName: string): Promise<void> {
     setSelectedTable(tableName)
     setPreview(null)
+    setTableColumns([])
     setError('')
     setIsLoadingPreview(true)
 
     try {
-      const response = await window.dbApi.getTablePreview({
-        host: connection.host,
-        port: Number(connection.port),
-        user: connection.user,
-        password: connection.password ?? '',
-        database: connection.database,
-        tableName,
-      })
+      const [previewResponse, columnsResponse] = await Promise.all([
+        window.dbApi.getTablePreview({
+          host: connection.host,
+          port: Number(connection.port),
+          user: connection.user,
+          password: connection.password ?? '',
+          database: connection.database,
+          tableName,
+        }),
+        window.dbApi.getTableColumns({
+          host: connection.host,
+          port: Number(connection.port),
+          user: connection.user,
+          password: connection.password ?? '',
+          database: connection.database,
+          tableName,
+        }),
+      ])
 
-      setPreview(response)
+      setPreview(previewResponse)
+      setTableColumns(columnsResponse)
 
       onPreviewLoaded({
         name: `Explore ${tableName}`,
         sql: buildTablePreviewSql(tableName),
-        result: response,
+        result: previewResponse,
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -813,7 +825,7 @@ function ExplorePanel({
             <h2>{selectedTable || 'Select a table'}</h2>
             <p className="muted">
               {selectedTable
-                ? 'Top 10 rows ordered by id DESC'
+                ? 'Top 100 rows ordered by id DESC'
                 : isLoadingTables
                   ? 'Loading tables...'
                   : 'Choose a table from the left.'}
@@ -860,14 +872,16 @@ function ExplorePanel({
 
         {isLoadingPreview && <p>Loading preview...</p>}
 
+
         {preview && preview.rows.length === 0 && <p>No rows returned.</p>}
 
         {preview && preview.rows.length > 0 && (
           <>
             <ResultsTable
-              columns={preview.columns}
-              rows={preview.rows}
-              onOpenCell={(column, value) => setExpandedCell({ column, value })}
+            columns={preview.columns}
+            rows={preview.rows}
+            columnTypes={tableColumns}
+            onOpenCell={(column, value) => setExpandedCell({ column, value })}
             />
 
             {expandedCell && (
@@ -884,15 +898,39 @@ function ExplorePanel({
   )
 }
 
+type TableSchemaProps = {
+  columns: TableColumn[]
+}
+
+function TableSchema({ columns }: TableSchemaProps): React.JSX.Element {
+  return (
+    <div className="schema-strip">
+      {columns.map((column) => (
+        <div key={column.name} className="schema-pill">
+          <span className="schema-column-name">{column.name}</span>
+          <span className="schema-column-type">{column.columnType}</span>
+
+          <span className="schema-column-meta">
+            {column.columnKey && <span>{column.columnKey}</span>}
+            <span>{column.isNullable ? 'nullable' : 'not null'}</span>
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 type ResultsTableProps = {
   columns: string[]
   rows: Record<string, unknown>[]
+  columnTypes?: TableColumn[]
   onOpenCell: (column: string, value: unknown) => void
 }
 
 function ResultsTable({
   columns,
   rows,
+  columnTypes = [],
   onOpenCell,
 }: ResultsTableProps): React.JSX.Element {
   return (
@@ -900,9 +938,22 @@ function ResultsTable({
       <table>
         <thead>
           <tr>
-            {columns.map((column) => (
-              <th key={column}>{column}</th>
-            ))}
+          {columns.map((column) => {
+            const columnMeta = columnTypes.find((item) => item.name === column)
+
+            return (
+              <th key={column}>
+                <span className="column-name">{column}</span>
+
+                {columnMeta && (
+                  <span className="column-type">
+                    {columnMeta.columnType}
+                    {columnMeta.columnKey ? ` · ${columnMeta.columnKey}` : ''}
+                  </span>
+                )}
+              </th>
+            )
+          })}
           </tr>
         </thead>
 
@@ -1009,7 +1060,7 @@ function escapeCsvValue(value: string): string {
     value.includes('\n') ||
     value.includes('\r')
 
-  //@ts-ignore
+
   const escaped = value.replaceAll('"', '""')
 
   return shouldQuote ? `"${escaped}"` : escaped

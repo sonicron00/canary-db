@@ -26,4 +26,12 @@ export type QueryDraft = {
   result?: QueryResult
 }
 
+export type TableColumn = {
+  name: string
+  dataType: string
+  columnType: string
+  isNullable: boolean
+  columnKey: string
+}
+
 export type LivePanel = 'query' | 'explore'

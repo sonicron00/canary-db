@@ -12,6 +12,15 @@ declare global {
         columns: string[]
         rows: Record<string, unknown>[]
       }>
+      getTableColumns: (params: unknown) => Promise<
+        {
+          name: string
+          dataType: string
+          columnType: string
+          isNullable: boolean
+          columnKey: string
+        }[]
+      >
     }
   }
 }
